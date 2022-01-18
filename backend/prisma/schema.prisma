@@ -1,0 +1,431 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["orderByRelation"]
+}
+
+model Seed {
+  id        Int      @id @default(autoincrement())
+  seed      String   @db.VarChar(255)
+  createdAt DateTime @default(now())
+}
+
+enum UserRole {
+  GUEST
+  USER
+  MODERATOR
+  ADMIN
+}
+
+model User {
+  id               BigInt    @id @default(autoincrement())
+  role             UserRole  @default(USER)
+  email            String?   @unique @db.VarChar(255)
+  emailActivatedAt DateTime?
+  passwordHash     String    @db.VarChar(72)
+  metaName         String?   @unique @db.VarChar(16)
+  name             String    @default("") @db.VarChar(64)
+  description      String    @default("") @db.Text
+  avatarId         BigInt? // IpfsObject
+  backgroundId     BigInt? // IpfsObject
+  featuredIndex    Int?      @db.SmallInt
+
+  totalSalesCount  Int     @default(0)
+  totalSalesProfit Decimal @default(0) @db.Decimal(64, 0)
+
+  metamaskAddress   String? @unique @db.VarChar(64)
+  metamaskMessage   String? @db.Text
+  metamaskSignature String? @db.Text
+
+  socialTwitch    String @default("") @db.VarChar(255)
+  socialInstagram String @default("") @db.VarChar(255)
+  socialTwitter   String @default("") @db.VarChar(255)
+  socialOnlyfans  String @default("") @db.VarChar(255)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  Avatar            IpfsObject?           @relation("UserAvatar", fields: [avatarId], references: [id])
+  Background        IpfsObject?           @relation("UserBackground", fields: [backgroundId], references: [id])
+  Autorizations     Authorization[]
+  Lots              Lot[]
+  LotBets           LotBet[]
+  TokensOriginals   TokenOriginal[]
+  Tokens            TokenNFT[]
+  TokenHistories    TokenHistory[]        @relation("TokenHistory_User")
+  TokenHistoriesOld TokenHistory[]        @relation("TokenHistory_OldOwner")
+  HiddenOriginals   HiddenTokenOriginal[]
+  Following         UserToUser[]          @relation("Following")
+  FollowedTo        UserToUser[]          @relation("Follower")
+
+  @@index([featuredIndex])
+}
+
+model UserToUser {
+  id         BigInt @id @default(autoincrement())
+  userId     BigInt
+  followerId BigInt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  Following User @relation("Following", fields: [userId], references: [id])
+  Follower  User @relation("Follower", fields: [followerId], references: [id])
+
+  @@unique([userId, followerId])
+}
+
+enum TaskType {
+  SEND_EMAIL
+  ORG_IMPORT
+  ORG_PROCESSING
+  ORG_TOKENS
+  LOT_POST_CLOSE
+  LOT_BUY_TOKEN
+}
+
+model Task {
+  id       BigInt   @id @default(autoincrement())
+  type     TaskType @default(SEND_EMAIL)
+  data     Json
+  attempts Int      @default(0) @db.SmallInt
+
+  forNodeUid String? @db.VarChar(32)
+  isActive   Boolean @default(false)
+  isFail     Boolean @default(false)
+  errorText  String? @db.Text
+
+  lastStartAt DateTime?
+  failAt      DateTime?
+  completedAt DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([type])
+  @@index([isActive])
+  @@index([deletedAt])
+}
+
+enum SettingColection {
+  NONE
+  FRONT
+}
+
+enum SettingType {
+  STRING
+  INTEGER
+  DESIMAL
+  BOOL
+  TEXT
+}
+
+model Setting {
+  id         BigInt           @id @default(autoincrement())
+  collection SettingColection @default(NONE)
+  type       SettingType      @default(STRING)
+  name       String           @db.VarChar(255)
+  value      String           @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([collection])
+  @@index([name])
+}
+
+model Authorization {
+  id           BigInt   @id @default(autoincrement())
+  tokenUid     String   @unique @db.VarChar(32)
+  expirationAt DateTime
+  userId       BigInt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  User User @relation(fields: [userId], references: [id])
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  AUDIO
+}
+
+enum TokenOriginalStatus {
+  BAN
+  DRAFT
+  IMPORT_TASK
+  IMPORT_FAIL
+  VALIDATION
+  TASK
+  PUBLISHED
+}
+
+enum TokenOriginalType {
+  LOCAL
+  IMPORT
+}
+
+model TokenOriginal {
+  id               BigInt              @id @default(autoincrement())
+  type             TokenOriginalType   @default(LOCAL)
+  status           TokenOriginalStatus @default(DRAFT)
+  userId           BigInt // token owner
+  contentType      MediaType
+  categoryId       BigInt?
+  name             String              @db.VarChar(255)
+  description      String              @db.Text
+  moderatorMessage String?             @db.Text
+  isUseCensored    Boolean             @default(false)
+  itsProcessed     Boolean             @default(false)
+  copiesTotal      Int                 @default(1)
+  isCommercial     Boolean             @default(false)
+  creatorReward    Int                 @default(10)
+  importAddr       String?             @db.VarChar(100)
+  importTokenId    String?             @db.VarChar(100)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  User            User                  @relation(fields: [userId], references: [id])
+  TokensNFT       TokenNFT[]
+  TokenMedias     TokenMedia[]
+  Lots            Lot[]
+  TokenHistories  TokenHistory[]
+  HiddenOriginals HiddenTokenOriginal[]
+
+  @@index([type])
+  @@index([status])
+  @@index([importAddr])
+  @@index([importAddr, importTokenId])
+}
+
+model HiddenTokenOriginal {
+  id              BigInt @id @default(autoincrement())
+  userId          BigInt
+  tokenOriginalId BigInt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  User          User          @relation(fields: [userId], references: [id])
+  TokenOriginal TokenOriginal @relation(fields: [tokenOriginalId], references: [id])
+
+  @@unique([userId, tokenOriginalId])
+}
+
+model TokenNFT {
+  id              BigInt  @id @default(autoincrement())
+  userId          BigInt // token owner
+  tokenOriginalId BigInt // original lot
+  token           String  @unique @db.VarChar(100)
+  index           Int // index in tokenOrigin
+  currentLotId    BigInt?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  User           User           @relation(fields: [userId], references: [id]) // Owner
+  TokenOriginal  TokenOriginal  @relation(fields: [tokenOriginalId], references: [id])
+  CurrentLot     Lot?           @relation(fields: [currentLotId], references: [id])
+  LotTokens      LotToken[]
+  LotBets        LotBet[]
+  TokenHistories TokenHistory[]
+}
+
+enum TokenHistoryType {
+  ORG_PUBLISHED
+  LOT_CREATED
+  LOT_CLOSED
+  LOT_BET_CREATED
+  LOT_BET_CANCEL
+  NFT_TOKEN_ADDED
+  NFT_TOKEN_PUT_UP_FOR_SALE
+  NFT_TOKEN_CHANGED_OWNER_BET
+  NFT_TOKEN_CHANGED_OWNER_SALE
+}
+
+model TokenHistory {
+  id              BigInt           @id @default(autoincrement())
+  type            TokenHistoryType
+  tokenOriginalId BigInt
+  tokenNftId      BigInt?
+  lotId           BigInt?
+  betId           BigInt? //
+
+  userId     BigInt? // event user, bet user, new owner
+  oldOwnerId BigInt? // old owner for NFT_TOKEN_CHANGED_OWNER_BET or NFT_TOKEN_CHANGED_OWNER_SALE
+
+  buyPrice Decimal? @db.Decimal(64, 0)
+
+  TokenOriginal TokenOriginal @relation(fields: [tokenOriginalId], references: [id])
+  TokenNFT      TokenNFT?     @relation(fields: [tokenNftId], references: [id])
+  Lot           Lot?          @relation(fields: [lotId], references: [id])
+  Bet           LotBet?       @relation(fields: [betId], references: [id])
+  User          User?         @relation("TokenHistory_User", fields: [userId], references: [id])
+  UserOldOwner  User?         @relation("TokenHistory_OldOwner", fields: [oldOwnerId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TokenMedia {
+  id              BigInt    @id @default(autoincrement())
+  tokenOriginalId BigInt
+  ipfsObjectId    BigInt
+  type            MediaType
+
+  isOriginal  Boolean @default(false)
+  isConverted Boolean @default(false)
+  isPreview   Boolean @default(false)
+  isCensored  Boolean @default(false)
+  isWatermark Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  TokenOriginal TokenOriginal @relation(fields: [tokenOriginalId], references: [id])
+  IpfsObject    IpfsObject    @relation(fields: [ipfsObjectId], references: [id])
+
+  @@unique([tokenOriginalId, isOriginal, isConverted, isPreview, isCensored, isWatermark])
+  @@index([tokenOriginalId])
+  @@index([ipfsObjectId])
+}
+
+model MarketCategory {
+  id   BigInt @id @default(autoincrement())
+  name String @db.VarChar(255)
+}
+
+enum LotSaleType {
+  AUCTION
+  SALE
+}
+
+enum LotStatus {
+  IN_SALES
+  CLOSED
+}
+
+// MarketLot
+model Lot {
+  id              BigInt      @id @default(autoincrement())
+  saleType        LotSaleType @default(AUCTION)
+  status          LotStatus   @default(IN_SALES)
+  tokenOriginalId BigInt
+  userId          BigInt // author or copy owner, lot creator
+  minimalCost     Decimal     @db.Decimal(64, 0) // BNB
+  currentCost     Decimal     @db.Decimal(64, 0) // BNB
+  sellerSignsData Json
+  marketplaceVer  Int         @default(1)
+  viewsRating     Int         @default(0)
+
+  isTop       Boolean @default(false)
+  copiesSold  Int     @default(0)
+  copiesTotal Int     @default(1)
+  isUseTimer  Boolean @default(false)
+
+  expiresAt    DateTime?
+  lastActiveAt DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  User             User           @relation(fields: [userId], references: [id])
+  TokenOriginal    TokenOriginal  @relation(fields: [tokenOriginalId], references: [id])
+  Bets             LotBet[]
+  LotTokens        LotToken[]
+  TokenHistories   TokenHistory[]
+  CurrentTokensNFT TokenNFT[]
+
+  @@index([status])
+  @@index([lastActiveAt])
+  @@index([userId])
+  @@index([isTop])
+  @@index([viewsRating])
+}
+
+model LotBet {
+  id             BigInt  @id @default(autoincrement())
+  userId         BigInt
+  lotId          BigInt
+  tokenNftId     BigInt? // eft token for winner
+  isWin          Boolean @default(false)
+  betAmount      Decimal @db.Decimal(64, 0)
+  buyerSignsData Json
+  isCancel       Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  Lot            Lot            @relation(fields: [lotId], references: [id])
+  User           User           @relation(fields: [userId], references: [id])
+  TokenNFT       TokenNFT?      @relation(fields: [tokenNftId], references: [id])
+  TokenHistories TokenHistory[]
+
+  @@index([lotId])
+  @@index([userId])
+  @@index([lotId, userId])
+  @@index([isCancel])
+}
+
+model LotToken {
+  id          BigInt  @id @default(autoincrement())
+  lotId       BigInt
+  tokenNftId  BigInt
+  isSold      Boolean @default(false)
+  isProcessin Boolean @default(false)
+
+  Lot      Lot      @relation(fields: [lotId], references: [id])
+  TokenNFT TokenNFT @relation(fields: [tokenNftId], references: [id])
+}
+
+enum IpfsObjectLocation {
+  S3_MAIN
+}
+
+model IpfsObject {
+  id       BigInt             @id @default(autoincrement())
+  sha256   String             @db.VarChar(64)
+  location IpfsObjectLocation @default(S3_MAIN)
+  mime     String             @db.VarChar(255) // mime type
+  size     Int // bytes size
+  width    Int // image or video width
+  height   Int // image or video height
+
+  type     MediaType
+  isThumb  Boolean   @default(false)
+  isBanned Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  UsersWithAvatar     User[]            @relation("UserAvatar")
+  UsersWithBackground User[]            @relation("UserBackground")
+  Medias              TokenMedia[]
+  ThumbsOrg           IpfsObjectThumb[] @relation("Org")
+  ThumbsThumb         IpfsObjectThumb[] @relation("Thumb")
+
+  @@index([sha256])
+  @@index([isBanned])
+}
+
+model IpfsObjectThumb {
+  id                BigInt @id @default(autoincrement())
+  orgIpfsObjectId   BigInt
+  thumbIpfsObjectId BigInt
+  thumbName         String @db.VarChar(32)
+
+  OrgObject   IpfsObject @relation("Org", fields: [orgIpfsObjectId], references: [id])
+  ThumbObject IpfsObject @relation("Thumb", fields: [thumbIpfsObjectId], references: [id])
+
+  @@unique([orgIpfsObjectId, thumbName])
+  @@index([orgIpfsObjectId])
+}
